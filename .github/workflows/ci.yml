@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libgtest-dev cppcheck clang-tidy
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Static analysis (cppcheck)
+        run: |
+          cppcheck --enable=all --std=c++17 --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            -I include src/ tests/
+
+      - name: Lint (clang-tidy)
+        run: |
+          clang-tidy src/FSM.cpp tests/test_fsm.cpp \
+            -p build \
+            --warnings-as-errors='*' \
+            -- -std=c++17 -I include
