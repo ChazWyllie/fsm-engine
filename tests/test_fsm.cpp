@@ -161,6 +161,35 @@ TEST(FSMTest, TransitionActionRuns) {
     EXPECT_TRUE(actionRan);
 }
 
+// REQ-009: every successful transition emits a log line containing
+// from-state, event, to-state, and a timestamp.
+TEST(FSMTest, SuccessfulTransitionEmitsLogLine) {
+    FSM fsm(EffectorState::SAFE);
+    fsm.addTransition({ EffectorState::SAFE, EffectorEvent::ARM, EffectorState::ARMED, nullptr, nullptr });
+
+    testing::internal::CaptureStdout();
+    EXPECT_TRUE(fsm.dispatch(EffectorEvent::ARM));
+    const std::string out = testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(out.find("SAFE"), std::string::npos)  << out;
+    EXPECT_NE(out.find("ARM"),  std::string::npos)  << out;
+    EXPECT_NE(out.find("ARMED"), std::string::npos) << out;
+    // Timestamp prefix `[HH:MM:SS]` — at minimum two colons inside brackets.
+    EXPECT_NE(out.find('['), std::string::npos) << out;
+    EXPECT_NE(out.find(']'), std::string::npos) << out;
+}
+
+// REQ-009: failed transitions must NOT emit a log line.
+TEST(FSMTest, FailedTransitionEmitsNoLog) {
+    FSM fsm = buildEffectorFSM();
+
+    testing::internal::CaptureStdout();
+    EXPECT_FALSE(fsm.dispatch(EffectorEvent::FIRE));  // invalid from SAFE
+    const std::string out = testing::internal::GetCapturedStdout();
+
+    EXPECT_EQ(out.find("-->"), std::string::npos) << out;
+}
+
 // Integration: full mission sequence SAFE -> ARMED -> TRACKING -> ENGAGED -> SAFE.
 TEST(FSMTest, FullMissionSequence) {
     FSM fsm = buildEffectorFSM();
