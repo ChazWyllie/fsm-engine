@@ -1,6 +1,11 @@
+// LEARN: this is the test suite. Every `TEST(SuiteName, TestName) { ... }`
+// below is automatically registered with GoogleTest — no manual list needed.
+// Read in order: helpers first, then tests grouped by REQ.
 #include "fsm/FSM.hpp"
 #include <gtest/gtest.h>
 
+// LEARN: `using namespace fsm;` is fine inside a `.cpp` file because it only
+// affects this translation unit. Never put it in a header.
 using namespace fsm;
 
 /// Helper: build a fully-wired FSM with all standard effector transitions.
@@ -82,6 +87,10 @@ TEST(FSMTest, GuardBlocksTransition) {
     FSM fsm(EffectorState::ARMED);
     bool authorized = false;
 
+    // LEARN: `[&]` captures every named variable used inside the lambda *by
+    // reference*. The lambda below reads the live value of `authorized` on
+    // every call. Other forms: `[]` (capture nothing), `[=]` (by value),
+    // `[&authorized]` (only this one, by reference).
     fsm.addTransition({
         EffectorState::ARMED, EffectorEvent::LOCK, EffectorState::TRACKING,
         [&] { return authorized; },
@@ -159,6 +168,41 @@ TEST(FSMTest, TransitionActionRuns) {
 
     fsm.dispatch(EffectorEvent::ARM);
     EXPECT_TRUE(actionRan);
+}
+
+// REQ-006: addUniversalErrorTransition wires ERROR -> FAULT from every non-FAULT state.
+TEST(FSMTest, UniversalErrorTransitionReachesFaultFromEveryState) {
+    for (auto startState : { EffectorState::SAFE, EffectorState::ARMED,
+                             EffectorState::TRACKING, EffectorState::ENGAGED }) {
+        FSM fsm(startState);
+        ASSERT_TRUE(fsm.addUniversalErrorTransition());
+
+        EXPECT_TRUE(fsm.dispatch(EffectorEvent::ERROR));
+        EXPECT_EQ(fsm.currentState(), EffectorState::FAULT)
+            << "Expected FAULT from " << stateToString(startState);
+    }
+}
+
+// REQ-006: addUniversalErrorTransition is idempotent w.r.t. user-defined ERROR transitions.
+TEST(FSMTest, UniversalErrorTransitionSkipsExistingEntries) {
+    FSM fsm(EffectorState::SAFE);
+    bool customRan = false;
+    fsm.addTransition({
+        EffectorState::SAFE, EffectorEvent::ERROR, EffectorState::FAULT,
+        nullptr,
+        [&] { customRan = true; }
+    });
+
+    const auto before = fsm.transitionCount();
+    ASSERT_TRUE(fsm.addUniversalErrorTransition());
+    const auto after = fsm.transitionCount();
+
+    // SAFE was already wired, so only ARMED, TRACKING, ENGAGED should be added.
+    EXPECT_EQ(after - before, 3u);
+
+    fsm.dispatch(EffectorEvent::ERROR);
+    EXPECT_EQ(fsm.currentState(), EffectorState::FAULT);
+    EXPECT_TRUE(customRan);  // user's action still ran
 }
 
 // REQ-009: every successful transition emits a log line containing

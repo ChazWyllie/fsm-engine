@@ -18,6 +18,10 @@ add_compile_options(
 add_library(fsm STATIC src/FSM.cpp)
 target_include_directories(fsm PUBLIC include)
 
+# Example demo binary.
+add_executable(effector_demo examples/effector_demo.cpp)
+target_link_libraries(effector_demo PRIVATE fsm)
+
 # Tests.
 enable_testing()
 find_package(GTest REQUIRED)
